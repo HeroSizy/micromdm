@@ -5,20 +5,50 @@ jobs:
         - image: golang:1.11
         - image: postgres:9.6
           environment:
+            MICROMDM_RDBMS: postgres
+            MICROMDM_RDBMS_DATABASE: micromdm_test
+            MICROMDM_RDBMS_USERNAME: micromdm
+            MICROMDM_RDBMS_PASSWORD: micromdm
+            MICROMDM_RDBMS_HOST: 127.0.0.1
+            MICROMDM_RDBMS_PORT: 5432
             POSTGRES_DB: micromdm
             POSTGRES_USER: micromdm
             POSTGRES_PASSWORD: micromdm
+        - image: mysql:5.7
+          environment:
+            MICROMDM_RDBMS: mysql
+            MICROMDM_RDBMS_DATABASE: micromdm_test
+            MICROMDM_RDBMS_USERNAME: micromdm
+            MICROMDM_RDBMS_PASSWORD: micromdm
+            MICROMDM_RDBMS_HOST: 127.0.0.1
+            MICROMDM_RDBMS_PORT: 3306
+            MYSQL_ROOT_HOST: micromdm
+            MYSQL_ROOT_PASSWORD: micromdm
+            MYSQL_DATABASE: micromdm_test
+            MYSQL_USER: micromdm
+            MYSQL_PASSWORD: micromdm
 
     working_directory: /go/src/github.com/micromdm/micromdm
     steps: &steps
       - checkout
       - run: apt-get update -y && apt-get install postgresql-client -y
+      - run: apt-get update -y && apt-get install default-mysql-client -y
       - run: make deps
       - run: GO111MODULE=on go install github.com/pressly/goose/cmd/goose
+      - run:
+          name: install dockerize
+          command: wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
+          environment:
+            DOCKERIZE_VERSION: v0.3.0
+      - run:
+          name: Wait for db to respond back before running migrations
+          command: dockerize -wait tcp://127.0.0.1:3306 -timeout 1m  # Times out :frowning:
+
       - run: make db-reset-test
       - run: make db-migrate-test
       - run: make test
       - run: make
+
 
 workflows:
   version: 2

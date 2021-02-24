@@ -39,8 +39,12 @@ import (
 	"github.com/micromdm/micromdm/platform/config"
 	depapi "github.com/micromdm/micromdm/platform/dep"
 	"github.com/micromdm/micromdm/platform/dep/sync"
+
 	"github.com/micromdm/micromdm/platform/device"
 	devicebuiltin "github.com/micromdm/micromdm/platform/device/builtin"
+	devicemysql "github.com/micromdm/micromdm/platform/device/mysql"
+	devicepg "github.com/micromdm/micromdm/platform/device/pg"
+
 	"github.com/micromdm/micromdm/platform/profile"
 	block "github.com/micromdm/micromdm/platform/remove"
 	"github.com/micromdm/micromdm/platform/user"
@@ -91,6 +95,15 @@ func serve(args []string) error {
 		flUDIDCertAuthWarnOnly   = flagset.Bool("udid-cert-auth-warn-only", env.Bool("MICROMDM_UDID_CERT_AUTH_WARN_ONLY", false), "warn only for udid cert mismatches")
 		flValidateSCEPExpiration = flagset.Bool("validate-scep-expiration", env.Bool("MICROMDM_VALIDATE_SCEP_EXPIRATION", false), "validate that the SCEP certificate is still valid")
 		flPrintArgs              = flagset.Bool("print-flags", false, "Print all flags and their values")
+
+		flRdbmsPassword 	= flagset.String("rdbms-password", env.String("MICROMDM_RDBMS_PASSWORD", ""), "Password to login to Rdbms")
+		flRdbms			 	= flagset.String("rdbms", env.String("MICROMDM_RDBMS", "boltdb"), "Select RDBMS ['boltdb', 'mysql', 'postgres']")
+		flRdbmsUsername 	= flagset.String("rdbms-username", env.String("MICROMDM_RDBMS_USERNAME", ""), "Username to login to Rdbms")
+		flRdbmsDatabase 	= flagset.String("rdbms-database", env.String("MICROMDM_RDBMS_DATABASE", ""), "Name of the Rdbms Database")
+		flRdbmsHost 		= flagset.String("rdbms-host", env.String("MICROMDM_RDBMS_HOST", ""), "IP or URL to the Rdbms Host")
+		flRdbmsPort 		= flagset.String("rdbms-port", env.String("MICROMDM_RDBMS_PORT", ""), "Port to use for Rdbms connection")
+		flCommandWebhookAuthUser = flagset.String("command-webhook-auth-user", env.String("MICROMDM_WEBHOOK_AUTH_USERNAME", ""), "Basic auth user for webhook to send command responses.")
+		flCommandWebhookAuthPass = flagset.String("command-webhook-auth-pass", env.String("MICROMDM_WEBHOOK_AUTH_PASSWORD", ""), "Basic auth password for webhook to send command responses.")
 	)
 	flagset.Usage = usageFor(flagset, "micromdm serve [flags]")
 	if err := flagset.Parse(args); err != nil {
@@ -142,6 +155,13 @@ func serve(args []string) error {
 		WebhooksHTTPClient: &http.Client{Timeout: time.Second * 30},
 
 		SCEPClientValidity: *flSCEPClientValidity,
+
+		Rdbms:		   server.Rdbms(*flRdbms),
+		RdbmsUsername: *flRdbmsUsername,
+		RdbmsPassword: *flRdbmsPassword,
+		RdbmsDatabase: *flRdbmsDatabase,
+		RdbmsHost:	   *flRdbmsHost,
+		RdbmsPort:	   *flRdbmsPort,
 	}
 	if !sm.UseDynSCEPChallenge {
 		// TODO: we have a static SCEP challenge password here to prevent
@@ -168,13 +188,39 @@ func serve(args []string) error {
 		removeService = block.LoggingMiddleware(logger)(svc)
 	}
 
-	devDB, err := devicebuiltin.NewDB(sm.DB)
-	if err != nil {
-		stdlog.Fatal(err)
+	//devDB, err := devicebuiltin.NewDB(sm.DB)
+	//if err != nil {
+	//	stdlog.Fatal(err)
+	//}
+
+	var devDB device.Store
+	if sm.MysqlDB != nil {
+		db, err := devicemysql.NewDB(sm.MysqlDB)
+		if err != nil {
+			stdlog.Fatal(err)
+		}
+		devWorker := device.NewWorker(db, sm.PubClient, logger)
+		go devWorker.Run(context.Background())
+		devDB = db
+	} else if sm.PostgresDB != nil {
+		db, err := devicepg.NewDB(sm.PostgresDB)
+		if err != nil {
+			stdlog.Fatal(err)
+		}
+		devWorker := device.NewWorker(db, sm.PubClient, logger)
+		go devWorker.Run(context.Background())
+		devDB = db
+	} else {
+		db, err := devicebuiltin.NewDB(sm.DB)
+		if err != nil {
+			stdlog.Fatal(err)
+		}
+		devWorker := device.NewWorker(db, sm.PubClient, logger)
+		go devWorker.Run(context.Background())
+		devDB = db
 	}
 
-	devWorker := device.NewWorker(devDB, sm.PubClient, logger)
-	go devWorker.Run(context.Background())
+
 
 	userDB, err := userbuiltin.NewDB(sm.DB)
 	if err != nil {
@@ -210,7 +256,14 @@ func serve(args []string) error {
 	scepEndpoints.PostEndpoint = scep.EndpointLoggingMiddleware(scepComponentLogger)(scepEndpoints.PostEndpoint)
 	scepHandler := scep.MakeHTTPHandler(scepEndpoints, sm.SCEPService, scepComponentLogger)
 
-	enrollHandlers := enroll.MakeHTTPHandlers(ctx, enroll.MakeServerEndpoints(sm.EnrollService, sm.SCEPDepot), httptransport.ServerErrorLogger(httpLogger))
+	var enrollHandlers enroll.HTTPHandlers
+	if sm.SCEPMysqlDB != nil {
+		enrollHandlers = enroll.MakeHTTPHandlers(ctx, enroll.MakeServerEndpoints(sm.EnrollService, sm.SCEPMysqlDB), httptransport.ServerErrorLogger(httpLogger))
+	} else if sm.SCEPPostgresDB != nil {
+		enrollHandlers = enroll.MakeHTTPHandlers(ctx, enroll.MakeServerEndpoints(sm.EnrollService, sm.SCEPPostgresDB), httptransport.ServerErrorLogger(httpLogger))
+	} else {
+		enrollHandlers = enroll.MakeHTTPHandlers(ctx, enroll.MakeServerEndpoints(sm.EnrollService, sm.SCEPBuiltin), httptransport.ServerErrorLogger(httpLogger))
+	}
 
 	r, options := httputil2.NewRouter(logger)
 
@@ -270,15 +323,25 @@ func serve(args []string) error {
 		depEndpoints := depapi.MakeServerEndpoints(depsvc, basicAuthEndpointMiddleware)
 		depapi.RegisterHTTPHandlers(r, depEndpoints, options...)
 
-		depsyncEndpoints := sync.MakeServerEndpoints(sync.NewService(syncer, sm.SyncDB), basicAuthEndpointMiddleware)
-		sync.RegisterHTTPHandlers(r, depsyncEndpoints, options...)
+		if sm.SyncMysqlDB != nil {
+			depsyncEndpoints := sync.MakeServerEndpoints(sync.NewService(syncer, sm.SyncMysqlDB), basicAuthEndpointMiddleware)
+			sync.RegisterHTTPHandlers(r, depsyncEndpoints, options...)
+		} else if sm.SyncPostgresDB != nil {
+			depsyncEndpoints := sync.MakeServerEndpoints(sync.NewService(syncer, sm.SyncPostgresDB), basicAuthEndpointMiddleware)
+			sync.RegisterHTTPHandlers(r, depsyncEndpoints, options...)
+		} else {
+			depsyncEndpoints := sync.MakeServerEndpoints(sync.NewService(syncer, sm.SyncBuiltin), basicAuthEndpointMiddleware)
+			sync.RegisterHTTPHandlers(r, depsyncEndpoints, options...)
+		}
 
 		if sm.SCEPChallengeDepot != nil {
 			challengeEndpoints := challenge.MakeServerEndpoints(challenge.NewService(sm.SCEPChallengeDepot), basicAuthEndpointMiddleware)
 			challenge.RegisterHTTPHandlers(r, challengeEndpoints, options...)
 		}
 
-		r.HandleFunc("/boltbackup", httputil2.RequireBasicAuth(boltBackup(sm.DB), "micromdm", *flAPIKey, "micromdm"))
+		if sm.DB != nil {
+			r.HandleFunc("/boltbackup", httputil2.RequireBasicAuth(boltBackup(sm.DB), "micromdm", *flAPIKey, "micromdm"))
+		}
 	} else {
 		mainLogger.Log("msg", "no api key specified")
 	}
@@ -328,6 +391,7 @@ func serveOptions(
 	configPath string,
 	tls bool,
 ) []httputil.Option {
+
 	tlsFromFile := (certPath != "" && keyPath != "")
 	serveOpts := []httputil.Option{
 		httputil.WithACMEHosts([]string{hostname}),
@@ -337,6 +401,7 @@ func serveOptions(
 	if tlsFromFile {
 		serveOpts = append(serveOpts, httputil.WithKeyPair(certPath, keyPath))
 	}
+
 	if !tls && addr == ":https" {
 		serveOpts = append(serveOpts, httputil.WithAddress(":8080"))
 	}

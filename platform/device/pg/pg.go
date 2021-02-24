@@ -14,8 +14,51 @@ import (
 
 type Postgres struct{ db *sqlx.DB }
 
-func New(db *sqlx.DB) *Postgres {
-	return &Postgres{db: db}
+func NewDB(db *sqlx.DB) (*Postgres, error) {
+	// Required for TIMESTAMP DEFAULT 0
+	_,err := db.Exec(`SET sql_mode = '';`)
+	
+	_,err = db.Exec(`CREATE TABLE IF NOT EXISTS `+tableName+` (
+		    uuid VARCHAR(40) PRIMARY KEY,
+		    udid VARCHAR(40) DEFAULT '',
+		    serial_number VARCHAR(12) DEFAULT '',
+		    os_version TEXT DEFAULT NULL,
+		    build_version TEXT DEFAULT NULL,
+		    product_name TEXT DEFAULT NULL,
+		    imei TEXT DEFAULT NULL,
+		    meid TEXT DEFAULT NULL,
+		    push_magic TEXT DEFAULT NULL,
+		    awaiting_configuration BOOLEAN DEFAULT false,
+		    token TEXT DEFAULT NULL,
+		    unlock_token TEXT DEFAULT NULL,
+		    enrolled BOOLEAN DEFAULT false,
+		    description TEXT DEFAULT NULL,
+		    model TEXT DEFAULT NULL,
+		    model_name TEXT DEFAULT NULL,
+		    device_name TEXT DEFAULT NULL,
+		    color TEXT DEFAULT NULL,
+		    asset_tag TEXT DEFAULT NULL,
+		    dep_profile_status TEXT DEFAULT NULL,
+		    dep_profile_uuid TEXT DEFAULT NULL,
+		    dep_profile_assign_time TIMESTAMPTZ DEFAULT '1970-01-01 00:00:00+00',
+		    dep_profile_push_time TIMESTAMPTZ DEFAULT '1970-01-01 00:00:00+00',
+		    dep_profile_assigned_date TIMESTAMPTZ DEFAULT '1970-01-01 00:00:00+00',
+		    dep_profile_assigned_by TEXT DEFAULT NULL,
+		    last_seen TIMESTAMPTZ DEFAULT '1970-01-01 00:00:00+00'
+		);`)
+	if err != nil {
+	   return nil, errors.Wrap(err, "creating devices sql table failed")
+	}
+	
+	_,err = db.Exec(`CREATE TABLE IF NOT EXISTS uuid_cert_auth (
+		    udid VARCHAR(40) PRIMARY KEY,
+		    cert_auth bytea DEFAULT NULL
+		);`)
+	if err != nil {
+	   return nil, errors.Wrap(err, "creating devices sql table failed")
+	}
+	
+	return &Postgres{db: db}, nil
 }
 
 func columns() []string {
@@ -164,8 +207,8 @@ func (d *Postgres) DeviceBySerial(ctx context.Context, serial string) (*device.D
 	return &dev, errors.Wrap(err, "finding device by serial")
 }
 
-func (d *Postgres) ListDevices(ctx context.Context, opt device.ListDevicesOption) ([]device.Device, error) {
-	query, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+func (d *Postgres) List(ctx context.Context, opt device.ListDevicesOption) ([]device.Device, error) {
+query, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select(columns()...).
 		From(tableName).
 		ToSql()
@@ -175,6 +218,10 @@ func (d *Postgres) ListDevices(ctx context.Context, opt device.ListDevicesOption
 	var list []device.Device
 	err = d.db.SelectContext(ctx, &list, query, args...)
 	return list, errors.Wrap(err, "list devices")
+}
+
+func (d *Postgres) ListDevices(ctx context.Context, opt device.ListDevicesOption) ([]device.Device, error) {
+	return d.List(ctx, opt)
 }
 
 func (d *Postgres) DeleteByUDID(ctx context.Context, udid string) error {
@@ -199,6 +246,68 @@ func (d *Postgres) DeleteBySerial(ctx context.Context, serial string) error {
 	}
 	_, err = d.db.ExecContext(ctx, query, args...)
 	return errors.Wrap(err, "delete device by serial_number")
+}
+
+func (d *Postgres) SaveUDIDCertHash(ctx context.Context, udid, certHash []byte) error {
+	updateQuery, args, err := sq.StatementBuilder.
+		PlaceholderFormat(sq.Dollar).
+		Update("uuid_cert_auth").
+		Prefix("ON CONFLICT (udid) DO").
+		Set("udid", udid).
+		Set("cert_auth", certHash).
+		ToSql()
+	if err != nil {
+		return errors.Wrap(err, "building update query for save udid cert hash")
+	}
+	
+	// MySql Convention
+	// Replace "ON DUPLICATE KEY UPDATE TABLE_NAME SET" to "ON DUPLICATE KEY UPDATE"
+	updateQuery = strings.Replace(updateQuery, "uuid_cert_auth", "", -1)
+
+	query, args, err := sq.StatementBuilder.
+		PlaceholderFormat(sq.Dollar).
+		Insert("uuid_cert_auth").
+		Columns("udid", "cert_auth").
+		Values(
+			udid,
+			certHash,
+		).
+		Suffix(updateQuery).
+		ToSql()
+	
+	if err != nil {
+		return errors.Wrap(err, "building udid cert auth save query")
+	}
+	
+	_, err = d.db.ExecContext(ctx, query, args...)
+	
+	return errors.Wrap(err, "exec udid cert auth save in pg")
+}
+
+func (d *Postgres) GetUDIDCertHash(ctx context.Context, udid []byte) ([]byte, error) {
+	query, args, err := sq.StatementBuilder.
+		PlaceholderFormat(sq.Dollar).
+		Select("udid", "cert_auth").
+		From("uuid_cert_auth").
+		Where(sq.Eq{"udid": udid}).
+		ToSql()
+	
+	if err != nil {
+		return nil, errors.Wrap(err, "building sql")
+	}
+
+	var i device.DeviceCertAuth
+	err = d.db.QueryRowxContext(ctx, query, args...).StructScan(&i)
+	if errors.Cause(err) == sql.ErrNoRows {
+		return nil, errors.Wrap(err, "udidCertAuthBucket not found!")
+	}
+	
+	certHash := i.CertAuth
+	if certHash == nil {
+		return nil, errors.Wrap(err, "certhash for udid is empty")
+	}
+	
+	return certHash, errors.Wrap(err, "finding uuid cert hash by udid")
 }
 
 type deviceNotFoundErr struct{}
