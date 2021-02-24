@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/boltdb/bolt"
@@ -28,7 +29,7 @@ func NewDB(db *bolt.DB) (*DB, error) {
 	return datastore, nil
 }
 
-func (db *DB) DeviceByUDID(udid string) (*remove.Device, error) {
+func (db *DB) DeviceByUDID(ctx context.Context, udid string) (*remove.Device, error) {
 	var dev remove.Device
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(RemoveBucket))
@@ -41,7 +42,7 @@ func (db *DB) DeviceByUDID(udid string) (*remove.Device, error) {
 	return &dev, errors.Wrap(err, "remove: get device by udid")
 }
 
-func (db *DB) Save(dev *remove.Device) error {
+func (db *DB) Save(ctx context.Context, dev *remove.Device) error {
 	tx, err := db.DB.Begin(true)
 	if err != nil {
 		return errors.Wrap(err, "begin transaction")
@@ -61,7 +62,7 @@ func (db *DB) Save(dev *remove.Device) error {
 	return tx.Commit()
 }
 
-func (db *DB) Delete(udid string) error {
+func (db *DB) Delete(ctx context.Context, udid string) error {
 	err := db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(RemoveBucket))
 		v := b.Get([]byte(udid))

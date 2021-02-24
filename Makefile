@@ -11,7 +11,7 @@ endif
 export GO111MODULE=on
 
 #Specify a minimum version for macos otherwise notarization will fail
-CGO_LDFLAGS=-mmacosx-version-min=10.12 
+CGO_LDFLAGS=-mmacosx-version-min=10.12
 
 VERSION = $(shell git describe --tags --always --dirty)
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
@@ -39,6 +39,10 @@ endif
 
 ifeq ($(PG_HOST),)
 PG_HOST := localhost
+endif
+
+ifeq ($(MYSQL_HOST),)
+MYSQL_HOST := 127.0.0.1
 endif
 
 BUILD_VERSION = "\
@@ -118,6 +122,11 @@ ngrok:
 docker-compose:
 	docker-compose -f docker-compose-dev.yaml up -d
 
+
+
+
+
+# PostgreSQL
 db-psql-test:
 	$(call psql_db,micromdm_test)
 
@@ -146,3 +155,41 @@ define goose_up
 	cd ./pg/migrations && goose postgres "host=${PG_HOST} port=5432 user=micromdm dbname=$(1) password=micromdm sslmode=disable" up
 endef
 
+
+
+
+# MySQL
+
+# Make sure user can access db:
+# mysql -u root -p
+# mysql> CREATE USER 'micromdm'@'localhost' IDENTIFIED BY 'micromdm';
+# mysql> GRANT ALL PRIVILEGES ON *.* TO 'micromdm'@'localhost' IDENTIFIED BY 'micromdm';
+db-mysql-test:
+	$(call mysql_db,micromdm_test)
+
+db-mysql:
+	$(call mysql_db,micromdm)
+
+define mysql_db
+	MYSQLPASSWORD=micromdm mysql --host=${MYSQL_HOST} --port=3306 --user=micromdm --password=micromdm $(1)
+endef
+
+db-mysql-reset-test:
+	$(call mysql_exec,'SHOW DATABASES;')
+	$(call mysql_exec,'DROP DATABASE IF EXISTS micromdm_test;')
+	$(call mysql_exec,'CREATE DATABASE micromdm_test;')
+	$(call mysql_exec,'SET sql_mode = "";')
+	
+define mysql_exec
+	mysql --host=${MYSQL_HOST} --port=3306 --user=micromdm --password=micromdm --execute=$(1)
+endef
+
+db-mysql-migrate-test:
+	$(call mysql-goose_up,micromdm_test)
+
+db-mysql-migrate:
+	$(call mysql-goose_up,micromdm)
+
+define mysql-goose_up
+	cd ./mysql/migrations && goose mysql "micromdm:micromdm@/$(1)?parseTime=true" up
+endef

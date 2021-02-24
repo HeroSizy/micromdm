@@ -1,30 +1,30 @@
-package queue
+package pg
 
 import (
 	"context"
-	"io/ioutil"
-	"os"
+//	"io/ioutil"
+//	"os"
 	"testing"
 
-	"github.com/boltdb/bolt"
 	"github.com/go-kit/kit/log"
+	"github.com/kolide/kit/dbutil"
+	_ "github.com/lib/pq"
+	"github.com/micromdm/micromdm/platform/queue"
 	"github.com/micromdm/micromdm/mdm"
 )
 
 func TestNext_Error(t *testing.T) {
-	store, teardown := setupDB(t)
-	defer teardown()
-
-	dc := &DeviceCommand{DeviceUDID: "TestDevice"}
-	dc.Commands = append(dc.Commands, Command{UUID: "xCmd"})
-	dc.Commands = append(dc.Commands, Command{UUID: "yCmd"})
-	dc.Commands = append(dc.Commands, Command{UUID: "zCmd"})
-	if err := store.Save(dc); err != nil {
+	store := setupDB(t)
+	dc := &queue.DeviceCommand{DeviceUDID: "TestDevice"}
+	dc.Commands = append(dc.Commands, queue.Command{UUID: "xCmd"})
+	dc.Commands = append(dc.Commands, queue.Command{UUID: "yCmd"})
+	dc.Commands = append(dc.Commands, queue.Command{UUID: "zCmd"})
+	ctx := context.Background()
+	if err := store.Save(ctx, dc); err != nil {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
-	resp := mdm.Response{
+	resp := mdm.Response {
 		UDID:        dc.DeviceUDID,
 		CommandUUID: "xCmd",
 		Status:      "Error",
@@ -45,17 +45,15 @@ func TestNext_Error(t *testing.T) {
 }
 
 func TestNext_NotNow(t *testing.T) {
-	store, teardown := setupDB(t)
-	defer teardown()
+	store := setupDB(t)
 
-	dc := &DeviceCommand{DeviceUDID: "TestDevice"}
-	dc.Commands = append(dc.Commands, Command{UUID: "xCmd"})
-	dc.Commands = append(dc.Commands, Command{UUID: "yCmd"})
-	if err := store.Save(dc); err != nil {
+	dc := &queue.DeviceCommand{DeviceUDID: "TestDevice"}
+	dc.Commands = append(dc.Commands, queue.Command{UUID: "xCmd"})
+	dc.Commands = append(dc.Commands, queue.Command{UUID: "yCmd"})
+	ctx := context.Background()
+	if err := store.Save(ctx, dc); err != nil {
 		t.Fatal(err)
 	}
-
-	ctx := context.Background()
 	tf := func(t *testing.T) {
 
 		resp := mdm.Response{
@@ -76,6 +74,7 @@ func TestNext_NotNow(t *testing.T) {
 		}
 
 		cmd, err = store.nextCommand(ctx, resp)
+
 		if err != nil {
 			t.Fatalf("expected nil, but got err: %s", err)
 		}
@@ -85,26 +84,25 @@ func TestNext_NotNow(t *testing.T) {
 	}
 
 	t.Run("withManyCommands", tf)
-	dc.Commands = []Command{{UUID: "xCmd"}}
-	if err := store.Save(dc); err != nil {
+	dc.Commands = []queue.Command{{UUID: "xCmd"}}
+	if err := store.Save(ctx, dc); err != nil {
 		t.Fatal(err)
 	}
 	t.Run("withOneCommand", tf)
 }
 
 func TestNext_Idle(t *testing.T) {
-	store, teardown := setupDB(t)
-	defer teardown()
+	store := setupDB(t)
 
-	dc := &DeviceCommand{DeviceUDID: "TestDevice"}
-	dc.Commands = append(dc.Commands, Command{UUID: "xCmd"})
-	dc.Commands = append(dc.Commands, Command{UUID: "yCmd"})
-	dc.Commands = append(dc.Commands, Command{UUID: "zCmd"})
-	if err := store.Save(dc); err != nil {
+	dc := &queue.DeviceCommand{DeviceUDID: "TestDevice"}
+	dc.Commands = append(dc.Commands, queue.Command{UUID: "xCmd"})
+	dc.Commands = append(dc.Commands, queue.Command{UUID: "yCmd"})
+	dc.Commands = append(dc.Commands, queue.Command{UUID: "zCmd"})
+	ctx := context.Background()
+	if err := store.Save(ctx, dc); err != nil {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
 	resp := mdm.Response{
 		UDID:        dc.DeviceUDID,
 		CommandUUID: "xCmd",
@@ -126,11 +124,11 @@ func TestNext_Idle(t *testing.T) {
 }
 
 func TestNext_zeroCommands(t *testing.T) {
-	store, teardown := setupDB(t)
-	defer teardown()
+	store := setupDB(t)
 
-	dc := &DeviceCommand{DeviceUDID: "TestDevice"}
-	if err := store.Save(dc); err != nil {
+	dc := &queue.DeviceCommand{DeviceUDID: "TestDevice"}
+	ctx := context.Background()
+	if err := store.Save(ctx, dc); err != nil {
 		t.Fatal(err)
 	}
 
@@ -139,7 +137,6 @@ func TestNext_zeroCommands(t *testing.T) {
 		"NotNow",
 	}
 
-	ctx := context.Background()
 	for _, s := range allStatuses {
 		t.Run(s, func(t *testing.T) {
 			resp := mdm.Response{CommandUUID: s, Status: s}
@@ -155,24 +152,37 @@ func TestNext_zeroCommands(t *testing.T) {
 
 }
 
-func setupDB(t *testing.T) (*Store, func()) {
-	f, _ := ioutil.TempFile("", "bolt-")
-	teardown := func() {
-		f.Close()
-		os.Remove(f.Name())
+func Test_SaveCommand(t *testing.T) {
+	store := setupDB(t)
+
+	dc := &queue.DeviceCommand{DeviceUDID: "TestDevice"}
+	ctx := context.Background()
+	if err := store.Save(ctx, dc); err != nil {
+		t.Fatal(err)
 	}
 
-	db, err := bolt.Open(f.Name(), 0777, nil)
-	if err != nil {
-		t.Fatalf("couldn't open bolt, err %s\n", err)
-	}
-	err = db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(DeviceCommandBucket))
-		return err
-	})
+}
+
+
+func setupDB(t *testing.T) *Store {
+	db, err := dbutil.OpenDBX(
+		"postgres",
+		"host=localhost port=5432 user=micromdm dbname=micromdm_test password=micromdm sslmode=disable",
+		dbutil.WithLogger(log.NewNopLogger()),
+		dbutil.WithMaxAttempts(1),
+	)
+	
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := &Store{DB: db, logger: log.NewNopLogger()}
-	return store, teardown
+	
+	err = SetupDB(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := &Store{db: db, logger: log.NewNopLogger()}
+	_,err = db.Exec(`TRUNCATE TABLE device_commands;`)
+	//store.NewQueue(db, nil)
+	return store
 }

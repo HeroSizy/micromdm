@@ -14,11 +14,12 @@ RUN make
 
 FROM alpine:latest
 
-RUN apk --update add ca-certificates
-
+RUN apk --update add ca-certificates git
+RUN mkdir /data; chmod 777 /data
 COPY --from=builder /go/src/github.com/micromdm/micromdm/build/linux/micromdm /usr/bin/
 COPY --from=builder /go/src/github.com/micromdm/micromdm/build/linux/mdmctl /usr/bin/
 
-EXPOSE 80 443
-VOLUME ["/var/db/micromdm"]
+COPY docker-entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+EXPOSE 8080 8443
 CMD ["micromdm", "serve"]
