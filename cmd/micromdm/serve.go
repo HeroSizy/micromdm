@@ -96,12 +96,12 @@ func serve(args []string) error {
 		flValidateSCEPExpiration = flagset.Bool("validate-scep-expiration", env.Bool("MICROMDM_VALIDATE_SCEP_EXPIRATION", false), "validate that the SCEP certificate is still valid")
 		flPrintArgs              = flagset.Bool("print-flags", false, "Print all flags and their values")
 
-		flRdbmsPassword 	= flagset.String("rdbms-password", env.String("MICROMDM_RDBMS_PASSWORD", ""), "Password to login to Rdbms")
-		flRdbms			 	= flagset.String("rdbms", env.String("MICROMDM_RDBMS", "boltdb"), "Select RDBMS ['boltdb', 'mysql', 'postgres']")
-		flRdbmsUsername 	= flagset.String("rdbms-username", env.String("MICROMDM_RDBMS_USERNAME", ""), "Username to login to Rdbms")
-		flRdbmsDatabase 	= flagset.String("rdbms-database", env.String("MICROMDM_RDBMS_DATABASE", ""), "Name of the Rdbms Database")
-		flRdbmsHost 		= flagset.String("rdbms-host", env.String("MICROMDM_RDBMS_HOST", ""), "IP or URL to the Rdbms Host")
-		flRdbmsPort 		= flagset.String("rdbms-port", env.String("MICROMDM_RDBMS_PORT", ""), "Port to use for Rdbms connection")
+		flRdbmsPassword          = flagset.String("rdbms-password", env.String("MICROMDM_RDBMS_PASSWORD", ""), "Password to login to Rdbms")
+		flRdbms                  = flagset.String("rdbms", env.String("MICROMDM_RDBMS", "boltdb"), "Select RDBMS ['boltdb', 'mysql', 'postgres']")
+		flRdbmsUsername          = flagset.String("rdbms-username", env.String("MICROMDM_RDBMS_USERNAME", ""), "Username to login to Rdbms")
+		flRdbmsDatabase          = flagset.String("rdbms-database", env.String("MICROMDM_RDBMS_DATABASE", ""), "Name of the Rdbms Database")
+		flRdbmsHost              = flagset.String("rdbms-host", env.String("MICROMDM_RDBMS_HOST", ""), "IP or URL to the Rdbms Host")
+		flRdbmsPort              = flagset.String("rdbms-port", env.String("MICROMDM_RDBMS_PORT", ""), "Port to use for Rdbms connection")
 		flCommandWebhookAuthUser = flagset.String("command-webhook-auth-user", env.String("MICROMDM_WEBHOOK_AUTH_USERNAME", ""), "Basic auth user for webhook to send command responses.")
 		flCommandWebhookAuthPass = flagset.String("command-webhook-auth-pass", env.String("MICROMDM_WEBHOOK_AUTH_PASSWORD", ""), "Basic auth password for webhook to send command responses.")
 	)
@@ -151,17 +151,19 @@ func serve(args []string) error {
 		ValidateSCEPIssuer:     *flValidateSCEPIssuer,
 		UDIDCertAuthWarnOnly:   *flUDIDCertAuthWarnOnly,
 		ValidateSCEPExpiration: *flValidateSCEPExpiration,
+		CommandWebhookAuthUser: *flCommandWebhookAuthUser,
+		CommandWebhookAuthPass: *flCommandWebhookAuthPass,
 
 		WebhooksHTTPClient: &http.Client{Timeout: time.Second * 30},
 
 		SCEPClientValidity: *flSCEPClientValidity,
 
-		Rdbms:		   server.Rdbms(*flRdbms),
+		Rdbms:         server.Rdbms(*flRdbms),
 		RdbmsUsername: *flRdbmsUsername,
 		RdbmsPassword: *flRdbmsPassword,
 		RdbmsDatabase: *flRdbmsDatabase,
-		RdbmsHost:	   *flRdbmsHost,
-		RdbmsPort:	   *flRdbmsPort,
+		RdbmsHost:     *flRdbmsHost,
+		RdbmsPort:     *flRdbmsPort,
 	}
 	if !sm.UseDynSCEPChallenge {
 		// TODO: we have a static SCEP challenge password here to prevent
@@ -219,8 +221,6 @@ func serve(args []string) error {
 		go devWorker.Run(context.Background())
 		devDB = db
 	}
-
-
 
 	userDB, err := userbuiltin.NewDB(sm.DB)
 	if err != nil {
