@@ -23,7 +23,7 @@ const (
 // Queue is an MDM Command Queue.
 type Queue interface {
 	Next(context.Context, Response) ([]byte, error)
-	Clear(context.Context, CheckinEvent) error
+	// Clear(context.Context, CheckinEvent) error
 }
 
 type MDMService struct {

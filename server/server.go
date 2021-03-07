@@ -1,8 +1,8 @@
 package server
 
 import (
-    "fmt"
-	
+	"fmt"
+
 	"context"
 	"crypto/x509"
 	"net/http"
@@ -20,7 +20,7 @@ import (
 	challengestore "github.com/micromdm/scep/challenge/bolt"
 	scep "github.com/micromdm/scep/server"
 	"github.com/pkg/errors"
-	
+
 	"github.com/jmoiron/sqlx"
 	"github.com/kolide/kit/dbutil"
 
@@ -36,12 +36,12 @@ import (
 	configbuiltin "github.com/micromdm/micromdm/platform/config/builtin"
 	configmysql "github.com/micromdm/micromdm/platform/config/mysql"
 	configpg "github.com/micromdm/micromdm/platform/config/pg"
-	
+
 	"github.com/micromdm/micromdm/platform/dep/sync"
 	syncbuiltin "github.com/micromdm/micromdm/platform/dep/sync/builtin"
 	syncmysql "github.com/micromdm/micromdm/platform/dep/sync/mysql"
 	syncpg "github.com/micromdm/micromdm/platform/dep/sync/pg"
-	
+
 	"github.com/micromdm/micromdm/platform/device"
 	devicebuiltin "github.com/micromdm/micromdm/platform/device/builtin"
 	devicemysql "github.com/micromdm/micromdm/platform/device/mysql"
@@ -52,13 +52,12 @@ import (
 	profilepg "github.com/micromdm/micromdm/platform/profile/pg"
 	"github.com/micromdm/micromdm/platform/pubsub"
 	"github.com/micromdm/micromdm/platform/pubsub/inmem"
-	
+
 	"github.com/micromdm/micromdm/platform/queue"
 	queueBuiltin "github.com/micromdm/micromdm/platform/queue/builtin"
 	queueMysql "github.com/micromdm/micromdm/platform/queue/mysql"
 	queuePg "github.com/micromdm/micromdm/platform/queue/pg"
-	
-	
+
 	block "github.com/micromdm/micromdm/platform/remove"
 	blockbuiltin "github.com/micromdm/micromdm/platform/remove/builtin"
 	blockmysql "github.com/micromdm/micromdm/platform/remove/mysql"
@@ -67,17 +66,21 @@ import (
 )
 
 type Rdbms string
+
 const (
-    boltdb   Rdbms = "boltdb"
-    mysql    Rdbms = "mysql"
-    postgres Rdbms = "postgres"
+	boltdb   Rdbms = "boltdb"
+	mysql    Rdbms = "mysql"
+	postgres Rdbms = "postgres"
 )
 
 func (rdbms Rdbms) String() string {
 	switch rdbms {
-		case mysql:    return "mysql"
-		case postgres: return "postgres"
-		default: 	   return "boltdb"
+	case mysql:
+		return "mysql"
+	case postgres:
+		return "postgres"
+	default:
+		return "boltdb"
 	}
 }
 
@@ -93,35 +96,34 @@ type Server struct {
 	UseDynSCEPChallenge    bool
 	GenDynSCEPChallenge    bool
 	SCEPChallengeDepot     *challengestore.Depot
-	SCEPBuiltin	      *scepbuiltin.Depot
-	SCEPMysqlDB       *scepmysql.Depot
-	SCEPPostgresDB    *sceppg.Depot
-	SCEPDB			  scepstore.Store
+	SCEPBuiltin            *scepbuiltin.Depot
+	SCEPMysqlDB            *scepmysql.Depot
+	SCEPPostgresDB         *sceppg.Depot
+	SCEPDB                 scepstore.Store
 	ProfileDB              profile.Store
 	ConfigDB               config.Store
 	RemoveDB               block.Store
 	CommandWebhookURL      string
-	CommandWebhookAuthUser 	string
-	CommandWebhookAuthPass 	string
+	CommandWebhookAuthUser string
+	CommandWebhookAuthPass string
 	DEPClient              *dep.Client
 	NoCmdHistory           bool
-	
-	Rdbms		      Rdbms
-	
-	SyncBuiltin       *syncbuiltin.DB
-	SyncPostgresDB    *syncpg.Postgres
-	SyncMysqlDB       *syncmysql.Mysql
-	
-	PostgresDB		  *sqlx.DB
-	MysqlDB			  *sqlx.DB
-	RdbmsUsername     string
-	RdbmsPassword     string
-	RdbmsDatabase     string
-	RdbmsHost 	      string
-	RdbmsPort 	      string
 
-	
-    ValidateSCEPIssuer     bool
+	Rdbms Rdbms
+
+	SyncBuiltin    *syncbuiltin.DB
+	SyncPostgresDB *syncpg.Postgres
+	SyncMysqlDB    *syncmysql.Mysql
+
+	PostgresDB    *sqlx.DB
+	MysqlDB       *sqlx.DB
+	RdbmsUsername string
+	RdbmsPassword string
+	RdbmsDatabase string
+	RdbmsHost     string
+	RdbmsPort     string
+
+	ValidateSCEPIssuer     bool
 	UDIDCertAuthWarnOnly   bool
 	ValidateSCEPExpiration bool
 
@@ -183,16 +185,16 @@ func (c *Server) Setup(logger log.Logger) error {
 	if err := c.setupProfileDB(); err != nil {
 		return err
 	}
-	
+
 	err := c.setupEnrollmentService()
-	
+
 	return err
 }
 
 func (c *Server) setupProfileDB() error {
 	var profileDB profile.Store
 	var err error
-	
+
 	// If Mysql is set up, use Mysql, else use Bolt as Fallback
 	if c.MysqlDB != nil {
 		profileDB, err = profilemysql.NewDB(c.MysqlDB)
@@ -201,7 +203,7 @@ func (c *Server) setupProfileDB() error {
 	} else {
 		profileDB, err = profilebuiltin.NewDB(c.DB)
 	}
-	
+
 	if err != nil {
 		return err
 	}
@@ -220,12 +222,12 @@ func (c *Server) setupWebhooks(logger log.Logger) error {
 	}
 
 	ctx := context.Background()
-	ww := webhook.New(c.CommandWebhookURL, 
-				  c.PubClient, 
-				  c.CommandWebhookAuthUser, 
-				  c.CommandWebhookAuthPass, 
-				  webhook.WithLogger(logger), 
-				  webhook.WithHTTPClient(c.WebhooksHTTPClient))
+	ww := webhook.New(c.CommandWebhookURL,
+		c.PubClient,
+		c.CommandWebhookAuthUser,
+		c.CommandWebhookAuthPass,
+		webhook.WithLogger(logger),
+		webhook.WithHTTPClient(c.WebhooksHTTPClient))
 
 	go ww.Run(ctx)
 	return nil
@@ -243,7 +245,7 @@ func (c *Server) setupRemoveService() error {
 	} else {
 		removeDB, err = blockbuiltin.NewDB(c.DB)
 	}
-	
+
 	if err != nil {
 		return err
 	}
@@ -295,7 +297,7 @@ func (c *Server) setupCommandQueue(logger log.Logger) error {
 		if c.NoCmdHistory {
 			opts = append(opts, queueBuiltin.WithoutHistory())
 		}
-		
+
 		q, err = queueBuiltin.NewQueue(c.DB, c.PubClient, opts...)
 		if err != nil {
 			return err
@@ -304,7 +306,6 @@ func (c *Server) setupCommandQueue(logger log.Logger) error {
 		devDB, err = devicebuiltin.NewDB(c.DB)
 	}
 
-	
 	if err != nil {
 		return errors.Wrap(err, "new device db")
 	}
@@ -319,7 +320,7 @@ func (c *Server) setupCommandQueue(logger log.Logger) error {
 		mdmService = device.UDIDCertAuthMiddleware(devDB, udidauthLogger, c.UDIDCertAuthWarnOnly)(mdmService)
 
 		verifycertLogger := log.With(logger, "component", "verifycert")
-		mdmService = VerifyCertificateMiddleware(c.ValidateSCEPIssuer, c.ValidateSCEPExpiration, c.SCEPDepot, verifycertLogger)(mdmService)
+		mdmService = VerifyCertificateMiddleware(c.ValidateSCEPIssuer, c.ValidateSCEPExpiration, c.SCEPDB, verifycertLogger)(mdmService)
 	}
 	c.MDMService = mdmService
 
@@ -340,8 +341,8 @@ func (c *Server) setupBolt() error {
 }
 
 func (c *Server) setupRdbms() error {
-	
-	if (c.Rdbms == Rdbms(boltdb) || c.RdbmsUsername == "" || c.RdbmsPassword == "" || c.RdbmsHost == "" || c.RdbmsPort == "" || c.RdbmsDatabase == "") {
+
+	if c.Rdbms == Rdbms(boltdb) || c.RdbmsUsername == "" || c.RdbmsPassword == "" || c.RdbmsHost == "" || c.RdbmsPort == "" || c.RdbmsDatabase == "" {
 		return nil
 	}
 
@@ -355,12 +356,12 @@ func (c *Server) setupRdbms() error {
 		if err != nil {
 			return errors.Wrap(err, "opening mysql")
 		}
-		
+
 		c.MysqlDB = db
 		// Set the number of open and idle connection to a maximum total of 2.
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
-		
+
 	} else if c.Rdbms == postgres {
 		db, err := dbutil.OpenDBX(
 			"postgres",
@@ -374,7 +375,7 @@ func (c *Server) setupRdbms() error {
 		}
 		c.PostgresDB = db
 	}
-	
+
 	return nil
 }
 
@@ -395,7 +396,7 @@ func (c *Server) setupConfigStore() error {
 	} else {
 		db, err = configbuiltin.NewDB(c.DB, c.PubClient)
 	}
-	
+
 	if err != nil {
 		return err
 	}
@@ -416,7 +417,7 @@ func (c *Server) setupPushService(logger log.Logger) error {
 		if err != nil {
 			return err
 		}
-	
+
 		service, err := apns.New(workerStore, c.ConfigDB, c.PubClient)
 
 		if err != nil {
@@ -425,7 +426,7 @@ func (c *Server) setupPushService(logger log.Logger) error {
 		c.APNSPushService = apns.LoggingMiddleware(
 			log.With(level.Info(logger), "component", "apns"),
 		)(service)
-		
+
 		pushinfoWorker := apns.NewWorker(workerStore, c.PubClient, logger)
 		go pushinfoWorker.Run(context.Background())
 	} else if c.PostgresDB != nil {
@@ -433,7 +434,7 @@ func (c *Server) setupPushService(logger log.Logger) error {
 		if err != nil {
 			return err
 		}
-	
+
 		service, err := apns.New(workerStore, c.ConfigDB, c.PubClient)
 
 		if err != nil {
@@ -442,7 +443,7 @@ func (c *Server) setupPushService(logger log.Logger) error {
 		c.APNSPushService = apns.LoggingMiddleware(
 			log.With(level.Info(logger), "component", "apns"),
 		)(service)
-		
+
 		pushinfoWorker := apns.NewWorker(workerStore, c.PubClient, logger)
 		go pushinfoWorker.Run(context.Background())
 	} else {
@@ -548,10 +549,9 @@ func (c *Server) CreateDEPSyncer(logger log.Logger) (sync.Syncer, error) {
 	if client != nil {
 		opts = append(opts, sync.WithClient(client))
 	}
-	
-	
+
 	var err error
-	
+
 	if c.MysqlDB != nil {
 		syncdb, err := syncmysql.NewDB(c.MysqlDB)
 		if err != nil {
@@ -564,7 +564,7 @@ func (c *Server) CreateDEPSyncer(logger log.Logger) (sync.Syncer, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		c.SyncPostgresDB = syncdb
 	} else {
 		syncdb, err := syncbuiltin.NewDB(c.DB)
@@ -574,7 +574,7 @@ func (c *Server) CreateDEPSyncer(logger log.Logger) (sync.Syncer, error) {
 
 		c.SyncBuiltin = syncdb
 	}
-	
+
 	var syncer sync.Syncer
 	if c.SyncMysqlDB != nil {
 		syncer, err = sync.NewWatcher(c.SyncMysqlDB, c.PubClient, opts...)
@@ -583,7 +583,7 @@ func (c *Server) CreateDEPSyncer(logger log.Logger) (sync.Syncer, error) {
 	} else {
 		syncer, err = sync.NewWatcher(c.SyncBuiltin, c.PubClient, opts...)
 	}
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -593,11 +593,11 @@ func (c *Server) CreateDEPSyncer(logger log.Logger) (sync.Syncer, error) {
 func (c *Server) setupSCEP(logger log.Logger) error {
 	var store scepstore.Store
 	var err error
-	
+
 	opts := []scep.ServiceOption{
 		scep.ClientValidity(c.SCEPClientValidity),
 	}
-	
+
 	var scepChalOpt scep.ServiceOption
 	if c.UseDynSCEPChallenge {
 		c.SCEPChallengeDepot, err = challengestore.NewBoltDepot(c.DB)
@@ -609,58 +609,58 @@ func (c *Server) setupSCEP(logger log.Logger) error {
 		scepChalOpt = scep.ChallengePassword(c.SCEPChallenge)
 	}
 	opts = append(opts, scepChalOpt)
-	
+
 	// If Mysql is set up, use Mysql, else use Bolt as Fallback
 	if c.MysqlDB != nil {
 		c.SCEPMysqlDB, err = scepmysql.NewDB(c.MysqlDB)
 		store = c.SCEPMysqlDB
-		
+
 		key, err := store.CreateOrLoadKey(2048)
 		if err != nil {
 			return err
 		}
-	
+
 		fmt.Println("CreateOrLoadCA")
 		_, err = store.CreateOrLoadCA(key, 5, "MicroMDM", "US")
 		if err != nil {
 			return err
 		}
-	
+
 		c.SCEPService, err = scep.NewService(store, opts...)
 	} else if c.PostgresDB != nil {
 		c.SCEPPostgresDB, err = sceppg.NewDB(c.PostgresDB)
 		store = c.SCEPPostgresDB
-		
+
 		key, err := store.CreateOrLoadKey(2048)
 		if err != nil {
 			return err
 		}
-	
+
 		fmt.Println("CreateOrLoadCA")
 		_, err = store.CreateOrLoadCA(key, 5, "MicroMDM", "US")
 		if err != nil {
 			return err
 		}
-	
+
 		c.SCEPService, err = scep.NewService(store, opts...)
 	} else {
 		c.SCEPBuiltin, err = scepbuiltin.NewDB(c.DB)
 		store = c.SCEPBuiltin
-		
+
 		key, err := store.CreateOrLoadKey(2048)
 		if err != nil {
 			return err
 		}
-	
+
 		fmt.Println("CreateOrLoadCA")
 		_, err = store.CreateOrLoadCA(key, 5, "MicroMDM", "US")
 		if err != nil {
 			return err
 		}
-		
+
 		c.SCEPService, err = scep.NewService(store, opts...)
 	}
-	
+
 	if err != nil {
 		return err
 	}
