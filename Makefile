@@ -97,7 +97,7 @@ APP_NAME = micromdm
 	$(eval APP_NAME = micromdm)
 
 micromdm: .pre-build .pre-micromdm
-	GOOS=linux CGO_ENABLED=0 go build -o build/$(CURRENT_PLATFORM)/micromdm -ldflags ${BUILD_VERSION} ./cmd/micromdm
+	GOOS=linux CGO_ENABLED=0 GOARCH=amd64 go build -o build/$(CURRENT_PLATFORM)/micromdm -ldflags ${BUILD_VERSION} ./cmd/micromdm
 
 install-micromdm: .pre-micromdm
 	go install -ldflags ${BUILD_VERSION} ./cmd/micromdm
