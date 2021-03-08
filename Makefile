@@ -82,7 +82,7 @@ install-local: \
 	$(eval APP_NAME = mdmctl)
 
 mdmctl: .pre-build .pre-mdmctl
-	go build -o build/$(CURRENT_PLATFORM)/mdmctl -ldflags ${BUILD_VERSION} ./cmd/mdmctl
+	GOOS=linux CGO_ENABLED=0 GOARCH=amd64 go build -o build/$(CURRENT_PLATFORM)/mdmctl -ldflags ${BUILD_VERSION} ./cmd/mdmctl
 
 xp-mdmctl: .pre-build .pre-mdmctl
 	GOOS=darwin go build -o build/darwin/mdmctl -ldflags ${BUILD_VERSION} ./cmd/mdmctl
